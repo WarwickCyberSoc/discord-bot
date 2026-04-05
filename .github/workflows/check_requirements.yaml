@@ -1,0 +1,30 @@
+name: Dependency Check
+
+on: [push, pull_request]
+
+jobs:
+  verify-deps:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pip-check-reqs pip-audit
+
+      - name: Check for missing dependencies
+        run: |
+          pip-extra-reqs . 
+          pip-missing-reqs .
+
+      - name: Run security audit
+        run: pip-audit --fix
