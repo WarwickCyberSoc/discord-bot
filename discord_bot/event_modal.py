@@ -1,18 +1,34 @@
 import discord
 from discord.enums import ChannelType
-from typing import Optional
+from typing import Optional, Type
+# import dateparser
+from abc import ABC
 
-class SocietyEvent():
-    def __init__(self, title = None, long_text = None, short_text = None, start = None, end = None, place = None, image = None):
-        self.title = title
-        self.long_text = long_text
-        self.short_text = short_text
-        self.start = start
-        self.end = end
-        self.place = place
-        self.image = image
+from society_event import SocietyEvent
 
-class EventModal(discord.ui.Modal, title='Cybersoc Event'):
+MODAL_TITLE = 'Create a Cybersoc Event'
+
+class EventModalBase(ABC, discord.ui.Modal):
+    def __init__(self, prefilled: Optional[SocietyEvent] = None):
+        super().__init__()
+        self.event = prefilled or SocietyEvent()
+        
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        await interaction.response.send_message('Something went wrong.', ephemeral=True)
+        
+class ContinueView(discord.ui.View):
+    def __init__(self, event: SocietyEvent, nextModal: Type[EventModalBase]):
+        super().__init__(timeout=None)
+        self.event = event
+        self.nextModal = nextModal
+
+    @discord.ui.button(label="Continue", style=discord.ButtonStyle.primary)
+    async def next_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal( self.nextModal(self.event) )
+        await interaction.delete_original_response()
+
+# TODO: Create a child class with title for creating and for editing. Everyone should inherit event prop and on_error handling
+class EventModal1(EventModalBase, title=MODAL_TITLE):
     def __init__(self, prefilled: Optional[SocietyEvent] = None):
         super().__init__()
         self.event = prefilled or SocietyEvent()
@@ -22,8 +38,8 @@ class EventModal(discord.ui.Modal, title='Cybersoc Event'):
             self.placeChannelInput.component.default_values = [self.event.place]
         else:
             self.placeTextInput.default = self.event.place
-        self.longTextInput.default = self.event.long_text
-        self.shortTextInput.default = self.event.short_text
+        self.startDateInput.default = self.event.start
+        self.endDateInput.default = self.event.end
     
     titleInput = discord.ui.TextInput(
         label='Name',
@@ -33,7 +49,6 @@ class EventModal(discord.ui.Modal, title='Cybersoc Event'):
         max_length=100
     )
     
-    # TODO: Move this to a separate modal
     placeChannelInput = discord.ui.Label(
         text='Place (on Discord)',
         component=discord.ui.ChannelSelect(
@@ -52,38 +67,106 @@ class EventModal(discord.ui.Modal, title='Cybersoc Event'):
         required=False,
         max_length=100
     )
+    
+    startDateInput = discord.ui.TextInput(
+        label='Start Date/Time',
+        style=discord.TextStyle.short,
+        placeholder='Any format, I\'ll understand.',
+        required=True
+    )
+    
+    endDateInput = discord.ui.TextInput(
+        label='End Date/Time',
+        style=discord.TextStyle.short,
+        required=False
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        self.event.title = self.titleInput.value
+        if len(self.placeChannelInput.component.values) > 0:
+            self.event.place = self.placeChannelInput.component.values[0].id # TODO: Check if ID is what we want to store
+        else:
+            self.event.place = self.placeTextInput.value
+        self.event.start = self.startDateInput.value
+        self.event.end = self.endDateInput.value
+        
+        await interaction.response.send_message(
+            content="Part 1 saved. Click below to continue.",
+            view=ContinueView(self.event, EventModal2),
+            ephemeral=True
+        )
+
+class EventModal2(EventModalBase, title=MODAL_TITLE):
+    def __init__(self, event: SocietyEvent):
+        super().__init__()
+        self.event = event
+        self.longTextInput.default = self.event.long_text
+        self.shortTextInput.default = self.event.short_text
         
     longTextInput = discord.ui.TextInput(
         label='Announcement Text',
         style=discord.TextStyle.long,
         placeholder='Use Markdown to make it look cool',
-        required=True,
-        max_length=1000,
+        required=True
     )
         
     shortTextInput = discord.ui.TextInput(
         label='Short Description',
         style=discord.TextStyle.long,
         placeholder='Used for Discord\'s Event feature, Calendar, etc.',
-        required=True,
-        max_length=1000,
+        required=True
     )
-
+    
+    imageCheckboxInput = discord.ui.Label(
+        text='Request Image?',
+        description='Leave blank if you are planning on uploading an image yourself, or if no image is to be used.',
+        component=discord.ui.Checkbox()
+    )
+    
     async def on_submit(self, interaction: discord.Interaction):
-        # embed = discord.Embed(title=f"📅 Event: {self.title_arg}", color=discord.Color.blue())
-        # embed.add_field(name="Type", value=self.short_text, inline=True)
-        # embed.add_field(name="Location", value=self.place, inline=True)
-        # embed.add_field(name="Time", value=f"{self.start} to {self.end}", inline=False)
-        # embed.add_field(name="Description", value=self.longTextInput.value, inline=False)
+        self.event.long_text = self.longTextInput.value
+        self.event.short_text = self.shortTextInput.value
         
-        # if self.pub_time:
-        #     embed.set_footer(text=f"Scheduled for: {self.pub_time}")
+        if self.imageCheckboxInput.component.value:
+            # TODO: Request Image
+            pass
+        else:
+            await interaction.response.send_message(
+                content="Part 2 saved. Click below to continue.",
+                view=FinishCreationView(self.event),
+                ephemeral=True)
         
-        # if self.image:
-        #     embed.set_image(url=self.image.url)
+        # TODO: Add preview of event announcement (use embed?), allow for edits
+        
+class FinishCreationView(discord.ui.View):
+    def __init__(self, event: SocietyEvent):
+        super().__init__(timeout=None)
+        self.event = event
+        
+    @discord.ui.button(label="Create Event Now", style=discord.ButtonStyle.primary)
+    async def create_event_now(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # TODO: Create event logic
+        await interaction.delete_original_response()
+        await interaction.response.send_message('Event "{}" Created Successfully'.format(self.event.title))
 
-        # await interaction.response.send_message(f"Event Created Successfully!", embed=embed)
-        await interaction.response.send_message(f"Event Created Successfully!")
+    @discord.ui.button(label="Upload Image", style=discord.ButtonStyle.primary)
+    async def upload_image(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal( FileUploadModal(self.event) )
+        await interaction.delete_original_response()
         
-    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
-        await interaction.response.send_message('Something went wrong.', ephemeral=True)
+class FileUploadModal(EventModalBase, title=MODAL_TITLE):
+    def __init__(self, event: SocietyEvent):
+        super().__init__()
+        self.event = event
+        
+    promotionImageInput = discord.ui.Label(
+        text='Upload Image',
+        component=discord.ui.FileUpload(
+            required=True
+        )
+    )
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        # TODO: Create event logic, check the file is actually an image
+        self.event.image = self.promotionImageInput.component.values[0].url # TODO: is url what we want? prob yes
+        await interaction.response.send_message(f"Event Created Successfully!")

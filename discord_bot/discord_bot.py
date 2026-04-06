@@ -6,7 +6,7 @@ import logging.handlers
 
 import sys
 
-from event_modal import EventModal
+from event_modal import EventModal1
 from env_secrets import get_secret
 from bot_client import BotClient
 
@@ -41,7 +41,7 @@ async def on_ready():
     
 @bot.tree.command()
 async def create_event(interaction: discord.Interaction):
-    await interaction.response.send_modal(EventModal())
+    await interaction.response.send_modal( EventModal1() )
     
 # @bot.tree.command()
 # @app_commands.describe(event_id='The base32hex ID of the event generated during its creation')
