@@ -6,7 +6,9 @@ import logging.handlers
 
 import sys
 
+from event_modal import EventModal
 from env_secrets import get_secret
+from bot_client import BotClient
 
 file_handler = logging.handlers.RotatingFileHandler(
     filename='bot.log',
@@ -31,10 +33,23 @@ logger.addHandler(console_handler)
 intents = discord.Intents.default()
 intents.message_content = True
 
-client = discord.Client(intents=intents)
+bot = BotClient(intents=intents)
 
-@client.event
+@bot.event
 async def on_ready():
-    logger.info(f'Logged in as {client.user}')
+    logger.info(f'Logged in as {bot.user}')
+    
+@bot.tree.command()
+async def create_event(interaction: discord.Interaction):
+    await interaction.response.send_modal(EventModal())
+    
+# @bot.tree.command()
+# @app_commands.describe(event_id='The base32hex ID of the event generated during its creation')
+# async def edit_event(interaction: discord.Interaction, event_id: str):
+#     await interaction.response.send_modal(EventModal(event_id))
 
-client.run(token=get_secret('BOT_TOKEN'), log_handler=None, log_level=logging.DEBUG)
+# Create ()
+    # Upload Promotion Material [button]
+# Edit (event_id)
+
+bot.run(token=get_secret('BOT_TOKEN'), log_handler=None, log_level=logging.DEBUG)
