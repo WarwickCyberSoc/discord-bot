@@ -14,6 +14,20 @@ class EventModalBase(ABC, discord.ui.Modal):
         super().__init__()
         self.event = event or SocietyEvent()
         
+    def generate_event_embed(self, interaction : discord.Interaction):
+        time_str = f"<t:{self.event.start}:s>"
+        if self.event.end:
+            time_str += f" to <t:{self.event.end}:s>"
+        location = self.event.location
+        if isinstance(location, int):
+            location = interaction.guild.get_channel(self.event.location).mention
+            
+        embed = discord.Embed(title=self.event.title)
+        embed.add_field(name="Location", value=location, inline=True)
+        embed.add_field(name="Scheduled Time", value=time_str, inline=True)
+        embed.add_field(name="Brief Description", value=self.event.short_text, inline=False)
+        return embed
+        
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         await interaction.response.send_message('Something went wrong.', ephemeral=True)
 
@@ -21,10 +35,10 @@ class EventModal1(EventModalBase, title=MODAL_TITLE):
     def __init__(self, event: Optional[SocietyEvent] = None):
         super().__init__(event)
         self.titleInput.default = self.event.title
-        if isinstance(self.event.place, int):
-            self.placeChannelInput.component.default_values = [ discord.Object(self.event.place) ]
-        if isinstance(self.event.place, str):
-            self.placeTextInput.default = self.event.place
+        if isinstance(self.event.location, int):
+            self.placeChannelInput.component.default_values = [ discord.Object(self.event.location) ]
+        if isinstance(self.event.location, str):
+            self.placeTextInput.default = self.event.location
         if self.event.start:
             self.startDateInput.default = timestamp_to_human(self.event.start)
         if self.event.end:
@@ -73,9 +87,9 @@ class EventModal1(EventModalBase, title=MODAL_TITLE):
     async def on_submit(self, interaction: discord.Interaction):
         self.event.title = self.titleInput.value
         if len(self.placeChannelInput.component.values) > 0:
-            self.event.place = self.placeChannelInput.component.values[0].id
+            self.event.location = self.placeChannelInput.component.values[0].id
         else:
-            self.event.place = self.placeTextInput.value
+            self.event.location = self.placeTextInput.value
             
         try:
             self.event.start = parse_to_timestamp(self.startDateInput.value)
@@ -111,6 +125,7 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
         super().__init__(event)
         self.longTextInput.default = self.event.long_text
         self.shortTextInput.default = self.event.short_text
+        self.imageCheckboxInput.component.default = self.event.is_requesting_image
         
     longTextInput = discord.ui.TextInput(
         label='Announcement Text',
@@ -120,10 +135,11 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
     )
         
     shortTextInput = discord.ui.TextInput(
-        label='Short Description',
+        label='Short Description (max. 1000 characters)',
         style=discord.TextStyle.long,
         placeholder='Used for Discord\'s Event feature, Calendar, etc.',
-        required=True
+        required=True,
+        max_length=1000
     )
     
     imageCheckboxInput = discord.ui.Label(
@@ -135,21 +151,23 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
     async def on_submit(self, interaction: discord.Interaction):
         self.event.long_text = self.longTextInput.value
         self.event.short_text = self.shortTextInput.value
+        self.event.is_requesting_image = self.imageCheckboxInput.component.value
+        embed = self.generate_event_embed(interaction)
         
         if self.imageCheckboxInput.component.value:
-            publicity_role_mention = interaction.guild.get_role(int(get_secret('PUBLICITY_ROLE_ID')))
+            publicity_role_mention = interaction.guild.get_role(int(get_secret('PUBLICITY_ROLE_ID'))).mention
+            
             await interaction.response.send_message(
-                content='{} is requesting an image for "{}" [{}]'
+                content='{} is requesting an image for {} {}'
                         .format(interaction.user.mention, self.event.title, publicity_role_mention),
                 view=FinishCreationView(self.event),
+                embed=embed,
                 ephemeral=False)
-            # TODO: Create embed preview for the publicity officer to know
         else:
             await interaction.response.send_message(
                 view=FinishCreationView(self.event),
+                embed=embed,
                 ephemeral=True)
-        
-        # TODO: Add preview of event announcement (use embed?), allow for edits
         
 class FinishCreationView(discord.ui.View):
     def __init__(self, event: SocietyEvent):
@@ -165,6 +183,11 @@ class FinishCreationView(discord.ui.View):
     @discord.ui.button(label="Upload Image and Create", style=discord.ButtonStyle.primary)
     async def upload_image(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal( FileUploadModal(self.event) )
+        await interaction.delete_original_response()
+        
+    @discord.ui.button(label="Edit Event", style=discord.ButtonStyle.primary)
+    async def edit_event(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal( EventModal1(self.event) )
         await interaction.delete_original_response()
         
 class FileUploadModal(EventModalBase, title=MODAL_TITLE):
