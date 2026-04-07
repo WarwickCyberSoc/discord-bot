@@ -1,9 +1,9 @@
 import discord
 from discord.enums import ChannelType
 from typing import Optional, Type
-# import dateparser
 from abc import ABC
 
+from datetime_handler import parse_to_timestamp, timestamp_to_human
 from env_secrets import get_secret
 from society_event import SocietyEvent
 
@@ -16,28 +16,19 @@ class EventModalBase(ABC, discord.ui.Modal):
         
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         await interaction.response.send_message('Something went wrong.', ephemeral=True)
-        
-class ContinueView(discord.ui.View):
-    def __init__(self, event: SocietyEvent, nextModal: Type[EventModalBase]):
-        super().__init__(timeout=None)
-        self.event = event
-        self.nextModal = nextModal
-
-    @discord.ui.button(label="Continue", style=discord.ButtonStyle.primary)
-    async def next_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal( self.nextModal(self.event) )
-        await interaction.delete_original_response()
 
 class EventModal1(EventModalBase, title=MODAL_TITLE):
     def __init__(self, event: Optional[SocietyEvent] = None):
         super().__init__(event)
         self.titleInput.default = self.event.title
-        if self.event.place and self.event.place.is_digit():
-            self.placeChannelInput.component.default_values = [self.event.place]
-        else:
+        if isinstance(self.event.place, int):
+            self.placeChannelInput.component.default_values = [ discord.Object(self.event.place) ]
+        if isinstance(self.event.place, str):
             self.placeTextInput.default = self.event.place
-        self.startDateInput.default = self.event.start
-        self.endDateInput.default = self.event.end
+        if self.event.start:
+            self.startDateInput.default = timestamp_to_human(self.event.start)
+        if self.event.end:
+            self.endDateInput.default = timestamp_to_human(self.event.end)
     
     titleInput = discord.ui.TextInput(
         label='Name',
@@ -85,14 +76,35 @@ class EventModal1(EventModalBase, title=MODAL_TITLE):
             self.event.place = self.placeChannelInput.component.values[0].id
         else:
             self.event.place = self.placeTextInput.value
-        self.event.start = self.startDateInput.value
-        self.event.end = self.endDateInput.value
+            
+        try:
+            self.event.start = parse_to_timestamp(self.startDateInput.value)
+            if self.endDateInput.value.strip() != '':
+                self.event.end = parse_to_timestamp(self.endDateInput.value)
+        except ValueError as e:
+            await interaction.response.send_message(
+                'Error: ' + str(e) + '. Click below to continue where you left off.',
+                view=ContinueView(self.event, EventModal1),
+                ephemeral=True
+            )
+            return
         
         await interaction.response.send_message(
-            content="Part 1 saved. Click below to continue.",
+            "Part 1 saved. Click below to continue.",
             view=ContinueView(self.event, EventModal2),
             ephemeral=True
         )
+        
+class ContinueView(discord.ui.View):
+    def __init__(self, event: SocietyEvent, nextModal: Type[EventModalBase]):
+        super().__init__(timeout=None)
+        self.event = event
+        self.nextModal = nextModal
+
+    @discord.ui.button(label="Continue", style=discord.ButtonStyle.primary)
+    async def next_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal( self.nextModal(self.event) )
+        await interaction.delete_original_response()
 
 class EventModal2(EventModalBase, title=MODAL_TITLE):
     def __init__(self, event: SocietyEvent):
@@ -167,8 +179,9 @@ class FileUploadModal(EventModalBase, title=MODAL_TITLE):
     )
     
     async def on_submit(self, interaction: discord.Interaction):
-        # TODO: Create event logic, check the file is actually an image
+        # TODO: Create event logic
         if len(self.promotionImageInput.component.values) > 0:
-            self.event.image = self.promotionImageInput.component.values[0].url # TODO: is url what we want? prob yes
+            # TODO: Securely download if its an image of appropriate size etc
+            self.event.image = self.promotionImageInput.component.values[0].url
         await interaction.response.send_message(f"Event Created Successfully!",
                                                 ephemeral=True)
