@@ -42,14 +42,11 @@ async def on_ready():
 @bot.tree.command()
 async def create_event(interaction: discord.Interaction):
     await interaction.response.send_modal( EventModal1() )
+    # await interaction.response.send_modal( EventModal1() )
     
 # @bot.tree.command()
 # @app_commands.describe(event_id='The base32hex ID of the event generated during its creation')
 # async def edit_event(interaction: discord.Interaction, event_id: str):
 #     await interaction.response.send_modal(EventModal(event_id))
-
-# Create ()
-    # Upload Promotion Material [button]
-# Edit (event_id)
 
 bot.run(token=get_secret('BOT_TOKEN'), log_handler=None, log_level=logging.DEBUG)

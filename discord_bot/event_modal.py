@@ -4,14 +4,15 @@ from typing import Optional, Type
 # import dateparser
 from abc import ABC
 
+from env_secrets import get_secret
 from society_event import SocietyEvent
 
-MODAL_TITLE = 'Create a Cybersoc Event'
+MODAL_TITLE = 'Cybersoc Event Manager'
 
 class EventModalBase(ABC, discord.ui.Modal):
-    def __init__(self, prefilled: Optional[SocietyEvent] = None):
+    def __init__(self, event: Optional[SocietyEvent] = None):
         super().__init__()
-        self.event = prefilled or SocietyEvent()
+        self.event = event or SocietyEvent()
         
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         await interaction.response.send_message('Something went wrong.', ephemeral=True)
@@ -27,12 +28,9 @@ class ContinueView(discord.ui.View):
         await interaction.response.send_modal( self.nextModal(self.event) )
         await interaction.delete_original_response()
 
-# TODO: Create a child class with title for creating and for editing. Everyone should inherit event prop and on_error handling
 class EventModal1(EventModalBase, title=MODAL_TITLE):
-    def __init__(self, prefilled: Optional[SocietyEvent] = None):
-        super().__init__()
-        self.event = prefilled or SocietyEvent()
-        
+    def __init__(self, event: Optional[SocietyEvent] = None):
+        super().__init__(event)
         self.titleInput.default = self.event.title
         if self.event.place and self.event.place.is_digit():
             self.placeChannelInput.component.default_values = [self.event.place]
@@ -84,7 +82,7 @@ class EventModal1(EventModalBase, title=MODAL_TITLE):
     async def on_submit(self, interaction: discord.Interaction):
         self.event.title = self.titleInput.value
         if len(self.placeChannelInput.component.values) > 0:
-            self.event.place = self.placeChannelInput.component.values[0].id # TODO: Check if ID is what we want to store
+            self.event.place = self.placeChannelInput.component.values[0].id
         else:
             self.event.place = self.placeTextInput.value
         self.event.start = self.startDateInput.value
@@ -98,8 +96,7 @@ class EventModal1(EventModalBase, title=MODAL_TITLE):
 
 class EventModal2(EventModalBase, title=MODAL_TITLE):
     def __init__(self, event: SocietyEvent):
-        super().__init__()
-        self.event = event
+        super().__init__(event)
         self.longTextInput.default = self.event.long_text
         self.shortTextInput.default = self.event.short_text
         
@@ -128,11 +125,15 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
         self.event.short_text = self.shortTextInput.value
         
         if self.imageCheckboxInput.component.value:
-            # TODO: Request Image
-            pass
+            publicity_role_mention = interaction.guild.get_role(int(get_secret('PUBLICITY_ROLE_ID')))
+            await interaction.response.send_message(
+                content='{} is requesting an image for "{}" [{}]'
+                        .format(interaction.user.mention, self.event.title, publicity_role_mention),
+                view=FinishCreationView(self.event),
+                ephemeral=False)
+            # TODO: Create embed preview for the publicity officer to know
         else:
             await interaction.response.send_message(
-                content="Part 2 saved. Click below to continue.",
                 view=FinishCreationView(self.event),
                 ephemeral=True)
         
@@ -143,30 +144,31 @@ class FinishCreationView(discord.ui.View):
         super().__init__(timeout=None)
         self.event = event
         
-    @discord.ui.button(label="Create Event Now", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Create Now", style=discord.ButtonStyle.primary)
     async def create_event_now(self, interaction: discord.Interaction, button: discord.ui.Button):
         # TODO: Create event logic
-        await interaction.delete_original_response()
         await interaction.response.send_message('Event "{}" Created Successfully'.format(self.event.title))
+        await interaction.delete_original_response()
 
-    @discord.ui.button(label="Upload Image", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Upload Image and Create", style=discord.ButtonStyle.primary)
     async def upload_image(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal( FileUploadModal(self.event) )
         await interaction.delete_original_response()
         
 class FileUploadModal(EventModalBase, title=MODAL_TITLE):
     def __init__(self, event: SocietyEvent):
-        super().__init__()
-        self.event = event
+        super().__init__(event)
         
     promotionImageInput = discord.ui.Label(
         text='Upload Image',
         component=discord.ui.FileUpload(
-            required=True
+            required=False
         )
     )
     
     async def on_submit(self, interaction: discord.Interaction):
         # TODO: Create event logic, check the file is actually an image
-        self.event.image = self.promotionImageInput.component.values[0].url # TODO: is url what we want? prob yes
-        await interaction.response.send_message(f"Event Created Successfully!")
+        if len(self.promotionImageInput.component.values) > 0:
+            self.event.image = self.promotionImageInput.component.values[0].url # TODO: is url what we want? prob yes
+        await interaction.response.send_message(f"Event Created Successfully!",
+                                                ephemeral=True)
