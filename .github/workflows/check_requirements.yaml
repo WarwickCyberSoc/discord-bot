@@ -6,25 +6,45 @@ jobs:
   verify-deps:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install pip-check-reqs pip-audit
+          pip install pipreqs pip-audit
 
-      - name: Check for missing dependencies
+      - name: Regenerate requirements.txt
         run: |
-          pip-extra-reqs . 
-          pip-missing-reqs .
+          #cp requirements.txt requirements.old.txt || true
+          pipreqs --force --savepath requirements.txt ./goose/
 
-      - name: Run security audit
-        run: pip-audit --fix
+      - name: Install updated dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run security audit and fix
+        run: pip-audit --fix -r requirements.txt
+
+      - name: Commit updated requirements.txt
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add requirements.txt
+
+          git diff --cached --quiet && echo "No changes to commit." && exit 0
+          git commit -m "chore(deps): auto-update requirements.txt"
+
+          git push
