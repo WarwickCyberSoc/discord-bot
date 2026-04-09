@@ -38,7 +38,7 @@ bot = BotClient(intents=intents)
 @bot.event
 async def on_ready():
     logger.info(f'Logged in as {bot.user}')
-    
+
 @bot.tree.command()
 async def create_event(interaction: discord.Interaction):
     await interaction.response.send_modal( EventModal1() )
@@ -47,6 +47,9 @@ async def create_event(interaction: discord.Interaction):
 # @bot.tree.command()
 # @app_commands.describe(event_id='The base32hex ID of the event generated during its creation')
 # async def edit_event(interaction: discord.Interaction, event_id: str):
+#     # TODO: edit_event
 #     await interaction.response.send_modal(EventModal(event_id))
+
+# TODO: cancel_event
 
 bot.run(token=get_secret('BOT_TOKEN'), log_handler=None, log_level=logging.DEBUG)

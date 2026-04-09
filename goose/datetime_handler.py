@@ -10,12 +10,13 @@ SETTINGS = {
     'DATE_ORDER'               : 'DMY', # Security feature: Americans are barred from using this bot :P
 }
 
-def parse_to_timestamp(text: str) -> int:
+def parse_datetime(text: str) -> datetime:
     dt = dateparser.parse(text, settings=SETTINGS)
     if not dt:
         raise ValueError(f"Could not parse date string: {text!r}")
-    return int(dt.timestamp())
+    if dt.timestamp() < datetime.now().timestamp():
+        raise ValueError(f"Cannot create event in the past")
+    return dt
 
-def timestamp_to_human(timestamp: int) -> str:
-    dt = datetime.fromtimestamp(timestamp)
+def datetime_format(dt: datetime) -> str:
     return dt.strftime('%d/%m/%Y %H:%M:%S')

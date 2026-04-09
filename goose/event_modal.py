@@ -1,9 +1,10 @@
 import discord
 from discord.enums import ChannelType
+
 from typing import Optional, Type
 from abc import ABC
 
-from datetime_handler import parse_to_timestamp, timestamp_to_human
+from datetime_handler import parse_datetime, datetime_format
 from env_secrets import get_secret
 from society_event import SocietyEvent
 
@@ -14,35 +15,24 @@ class EventModalBase(ABC, discord.ui.Modal):
         super().__init__()
         self.event = event or SocietyEvent()
         
-    def generate_event_embed(self, interaction : discord.Interaction):
-        time_str = f"<t:{self.event.start}:s>"
-        if self.event.end:
-            time_str += f" to <t:{self.event.end}:s>"
-        location = self.event.location
-        if isinstance(location, int):
-            location = interaction.guild.get_channel(self.event.location).mention
-            
-        embed = discord.Embed(title=self.event.title)
-        embed.add_field(name="Location", value=location, inline=True)
-        embed.add_field(name="Scheduled Time", value=time_str, inline=True)
-        embed.add_field(name="Brief Description", value=self.event.short_text, inline=False)
-        return embed
-        
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
-        await interaction.response.send_message('Something went wrong.', ephemeral=True)
+        await interaction.response.send_message('Something went wrong.' + str(error), ephemeral=True) # FIXME: Disable on prod
+
+    async def retry(self, interaction: discord.Interaction, error_msg: str):
+        await interaction.response.send_message(
+            'Error: ' + error_msg + '.\nClick below to continue where you left off.',
+            view=ContinueView(self.event, self.__class__),
+            ephemeral=True
+        )
 
 class EventModal1(EventModalBase, title=MODAL_TITLE):
     def __init__(self, event: Optional[SocietyEvent] = None):
         super().__init__(event)
         self.titleInput.default = self.event.title
-        if isinstance(self.event.location, int):
+        if self.event.location and not self.event.has_physical_location():
             self.placeChannelInput.component.default_values = [ discord.Object(self.event.location) ]
-        if isinstance(self.event.location, str):
+        else:
             self.placeTextInput.default = self.event.location
-        if self.event.start:
-            self.startDateInput.default = timestamp_to_human(self.event.start)
-        if self.event.end:
-            self.endDateInput.default = timestamp_to_human(self.event.end)
     
     titleInput = discord.ui.TextInput(
         label='Name',
@@ -70,37 +60,15 @@ class EventModal1(EventModalBase, title=MODAL_TITLE):
         required=False,
         max_length=100
     )
-    
-    startDateInput = discord.ui.TextInput(
-        label='Start Date/Time',
-        style=discord.TextStyle.short,
-        placeholder='Any format, I\'ll understand.',
-        required=True
-    )
-    
-    endDateInput = discord.ui.TextInput(
-        label='End Date/Time',
-        style=discord.TextStyle.short,
-        required=False
-    )
 
     async def on_submit(self, interaction: discord.Interaction):
         self.event.title = self.titleInput.value
         if len(self.placeChannelInput.component.values) > 0:
             self.event.location = self.placeChannelInput.component.values[0].id
-        else:
+        elif self.placeTextInput.value.strip() != '':
             self.event.location = self.placeTextInput.value
-            
-        try:
-            self.event.start = parse_to_timestamp(self.startDateInput.value)
-            if self.endDateInput.value.strip() != '':
-                self.event.end = parse_to_timestamp(self.endDateInput.value)
-        except ValueError as e:
-            await interaction.response.send_message(
-                'Error: ' + str(e) + '. Click below to continue where you left off.',
-                view=ContinueView(self.event, EventModal1),
-                ephemeral=True
-            )
+        else:
+            await self.retry(interaction, 'No place specified')
             return
         
         await interaction.response.send_message(
@@ -123,6 +91,12 @@ class ContinueView(discord.ui.View):
 class EventModal2(EventModalBase, title=MODAL_TITLE):
     def __init__(self, event: SocietyEvent):
         super().__init__(event)
+        if self.event.start:
+            self.startDateInput.default = datetime_format(self.event.start)
+        if self.event.end:
+            self.endDateInput.default = datetime_format(self.event.end)
+        if self.event.has_physical_location():
+            self.endDateInput.required = True # Due to Discord API rules
         self.longTextInput.default = self.event.long_text
         self.shortTextInput.default = self.event.short_text
         self.imageCheckboxInput.component.default = self.event.is_requesting_image
@@ -148,14 +122,37 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
         component=discord.ui.Checkbox()
     )
     
+    startDateInput = discord.ui.TextInput(
+        label='Start Date/Time',
+        style=discord.TextStyle.short,
+        placeholder='Any format, trust me.',
+        required=True
+    )
+    
+    endDateInput = discord.ui.TextInput(
+        label='End Date/Time',
+        style=discord.TextStyle.short,
+        placeholder='I do not even need AI to understand natural language.',
+        required=False
+    )
+    
     async def on_submit(self, interaction: discord.Interaction):
         self.event.long_text = self.longTextInput.value
         self.event.short_text = self.shortTextInput.value
         self.event.is_requesting_image = self.imageCheckboxInput.component.value
-        embed = self.generate_event_embed(interaction)
+        
+        try:
+            self.event.start = parse_datetime(self.startDateInput.value)
+            if self.endDateInput and self.endDateInput.value.strip() != '':
+                self.event.end = parse_datetime(self.endDateInput.value)
+        except ValueError as e:
+            await self.retry(interaction, str(e))
+            return
+        
+        embed = self.event.to_embed(interaction)
         
         if self.imageCheckboxInput.component.value:
-            publicity_role_mention = interaction.guild.get_role(int(get_secret('PUBLICITY_ROLE_ID'))).mention
+            publicity_role_mention = interaction.guild.get_role(int(get_secret('PUBLICITY_ROLE'))).mention
             
             await interaction.response.send_message(
                 content='{} is requesting an image for {} {}'
@@ -176,8 +173,7 @@ class FinishCreationView(discord.ui.View):
         
     @discord.ui.button(label="Create Now", style=discord.ButtonStyle.primary)
     async def create_event_now(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # TODO: Create event logic
-        await interaction.response.send_message('Event "{}" Created Successfully'.format(self.event.title))
+        await self.event.publish(interaction)
         await interaction.delete_original_response()
 
     @discord.ui.button(label="Upload Image and Create", style=discord.ButtonStyle.primary)
@@ -202,9 +198,12 @@ class FileUploadModal(EventModalBase, title=MODAL_TITLE):
     )
     
     async def on_submit(self, interaction: discord.Interaction):
-        # TODO: Create event logic
+        accepted_types = [ 'image/png', 'image/jpeg', 'image/webp' ]
         if len(self.promotionImageInput.component.values) > 0:
-            # TODO: Securely download if its an image of appropriate size etc
-            self.event.image = self.promotionImageInput.component.values[0].url
-        await interaction.response.send_message(f"Event Created Successfully!",
-                                                ephemeral=True)
+            image = self.promotionImageInput.component.values[0]
+            if image.content_type not in accepted_types:
+                await self.retry(interaction, 'Image must be in one of the following formats: PNG, JPEG, or WEBP')
+                return
+            self.event.image = image
+            
+        await self.event.publish(interaction)
