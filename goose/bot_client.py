@@ -11,7 +11,7 @@ class BotClient(discord.Client):
     async def setup_hook(self):
         # This copies the global commands over to specific guild for testing (rather than wait an hour or so for Discord to catch up)
         try:
-            guild_id = env_secrets.get_secret('GUILD')
+            guild_id = env_secrets.get_secret('GUILD_ID')
             guild = discord.Object(id=guild_id)
             self.tree.copy_global_to(guild=guild)
             await self.tree.sync(guild=guild)

@@ -9,6 +9,7 @@ import sys
 from event_modal import EventModal1
 from env_secrets import get_secret
 from bot_client import BotClient
+from calendar_provider import GoogleCalendar
 
 file_handler = logging.handlers.RotatingFileHandler(
     filename='bot.log',
@@ -34,18 +35,20 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = BotClient(intents=intents)
+calendar = GoogleCalendar(get_secret('CALENDAR_ID'))
 
 @bot.event
 async def on_ready():
     logger.info(f'Logged in as {bot.user}')
+    calendar.authenticate()
 
 @bot.tree.command()
 async def create_event(interaction: discord.Interaction):
-    await interaction.response.send_modal( EventModal1() )
+    await interaction.response.send_modal( EventModal1(calendar) )
     # await interaction.response.send_modal( EventModal1() )
     
 # @bot.tree.command()
-# @app_commands.describe(event_id='The base32hex ID of the event generated during its creation')
+# @app_commands.describe(event_id='The base32hex ID of the event')
 # async def edit_event(interaction: discord.Interaction, event_id: str):
 #     # TODO: edit_event
 #     await interaction.response.send_modal(EventModal(event_id))

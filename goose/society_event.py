@@ -2,8 +2,10 @@ from datetime import datetime
 from typing import Optional, Union
 
 import discord
+import dismoji
 
 from env_secrets import get_secret
+from calendar_provider import CalendarProvider
 
 class SocietyEvent():
     def __init__(self, title : Optional[str] = None, long_text : Optional[str] = None,
@@ -36,8 +38,17 @@ class SocietyEvent():
         embed.add_field(name="Brief Description", value=self.short_text, inline=False)
         return embed
         
-    async def publish(self, interaction: discord.Interaction):
-        # Create Scheduled Event
+    async def publish(self, interaction: discord.Interaction, calendar: CalendarProvider):
+        scheduled_event = await self._create_scheduled_event(interaction)
+        message = await self._send_message(interaction)
+        calendar_event_id = self._create_calendar_event(calendar, scheduled_event.id, message.id)
+        sanitized_title = '`{}`'.format(self.title)
+        await interaction.response.send_message(
+            content='{} Created Successfully ({})'.format(sanitized_title, calendar_event_id),
+            ephemeral=False
+        )
+        
+    async def _create_scheduled_event(self, interaction: discord.Interaction) -> discord.ScheduledEvent:
         scheduled_event = {
             'name' : self.title,
             'description' : self.short_text,
@@ -61,9 +72,9 @@ class SocietyEvent():
         if self.image:
             scheduled_event['image'] = await self.image.read()
         
-        scheduled_event = await interaction.guild.create_scheduled_event(**scheduled_event)
-        
-        # 2. Send message in [#events]
+        return await interaction.guild.create_scheduled_event(**scheduled_event)
+    
+    async def _send_message(self, interaction: discord.Interaction) -> discord.Message:
         channel_id = int(get_secret('EVENTS_CHANNEL'))
         channel = interaction.guild.get_channel(channel_id)
         
@@ -71,11 +82,36 @@ class SocietyEvent():
             raise TypeError('Events channel is not valid')
         
         if self.image:
-            message = await channel.send(content=self.long_text, file=await self.image.to_file())
+            return await channel.send(content=self.long_text, file=await self.image.to_file())
         else:
-            message = await channel.send(self.long_text)
+            return await channel.send(self.long_text)
         
-        # TODO Create Google Calendar
+    def _create_calendar_event(self, calendar: CalendarProvider, scheduled_event_id: int, message_id: int) -> str:
+        event = {
+            'summary': dismoji.demojize(self.title),
+            'location': dismoji.demojize(self.location),
+            'description': dismoji.demojize(self.short_text),
+            'start': self._google_datetime(self.start),
+            'extendedProperties': {
+                'private': {
+                    'scheduled_event': scheduled_event_id,
+                    'message': message_id
+                }
+            }
+        }
         
+        if not self.has_physical_location():
+            event['location'] = 'Discord Server'
+            
+        if self.end:
+            event['end'] = self._google_datetime(self.end)
+        else:
+            event['end'] = self._google_datetime(self.start.replace(hour=23, minute=59))
         
-        await interaction.response.send_message('{} Created Successfully ({})'.format(self.title, scheduled_event.id))
+        return calendar.create_event(event)
+            
+    def _google_datetime(self, dt: datetime):
+        return {
+            'dateTime': dt.isoformat(timespec='seconds'),
+            'timeZone': 'Europe/London'
+        }
