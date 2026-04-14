@@ -30,17 +30,19 @@ async def publish_event(event: SocietyEvent, interaction: discord.Interaction, c
         ExtendedProperties(scheduled_event_id=scheduled_event.id, message_id=message.id)
     )
     
+    message = '`{}` Created Successfully (id: {})'.format(event.title, calendar_event_id)
     if event.id:
-        await interaction.response.send_message(
-            content='`{}` Edited Successfully (id: {})'.format(event.title, calendar_event_id),
-            ephemeral=False
-        )
-        return
+        message = '`{}` Edited Successfully (id: {})'.format(event.title, calendar_event_id)
     
-    await interaction.response.send_message(
-        content='`{}` Created Successfully (id: {})'.format(event.title, calendar_event_id),
-        ephemeral=False
-    )
+    # The below is because forms and views have different ways of responding to interactions
+    try:
+        await interaction.response.send_message(message)
+    except:
+        try:
+            await interaction.message.reply(message)
+        except:
+            pass
+    return
     
 async def _do_scheduled_event(event: SocietyEvent, interaction: discord.Interaction) -> discord.ScheduledEvent:
     scheduled_event_builder = {

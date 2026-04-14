@@ -21,6 +21,10 @@ class CalendarProvider(ABC):
     @abstractmethod
     def get_event(self, id: str) -> Optional[ExtendedProperties]:
         pass
+    
+    @abstractmethod
+    def delete_event(self, id: str) -> Optional[ExtendedProperties]:
+        pass
 
 class GoogleCalendar(CalendarProvider):
     SCOPES = [ "https://www.googleapis.com/auth/calendar" ]
@@ -74,7 +78,20 @@ class GoogleCalendar(CalendarProvider):
             event = self.service.events().get(calendarId=self.id, eventId=id).execute()
             return ExtendedProperties(**event['extendedProperties']['private'])
         except HttpError as error:
-            if error.resp.status == 404:
+            if error.resp.status in [404, 410]:
                 return None
             else:
                 raise error
+            
+    def delete_event(self, id: str) -> Optional[ExtendedProperties]:
+        props = self.get_event(id)
+        if not props:
+            return None
+        
+        try:
+            self.service.events().delete(calendarId=self.id, eventId=id).execute()
+            return props
+        except HttpError as error:
+            if error.resp.status in [404, 410]:
+                return None 
+            raise error

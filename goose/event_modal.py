@@ -19,7 +19,7 @@ class EventModalBase(ABC, discord.ui.Modal):
         self.calendar = calendar
         
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
-        await interaction.response.send_message('Something went wrong.' + str(error), ephemeral=True) # FIXME: Disable on prod
+        await interaction.response.send_message('Something went wrong.', ephemeral=True)
 
     async def retry(self, interaction: discord.Interaction, error_msg: str):
         await interaction.response.send_message(
@@ -180,16 +180,16 @@ class FinishCreationView(discord.ui.View):
         self.event = event
         self.calendar = calendar
         
-    @discord.ui.button(label="Create Now", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Post Now", style=discord.ButtonStyle.primary)
     async def create_event_now(self, interaction: discord.Interaction, button: discord.ui.Button):
         await discord_utils.publish_event(self.event, interaction, self.calendar)
 
-    @discord.ui.button(label="Upload Image and Create", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Upload Image and Post", style=discord.ButtonStyle.primary)
     async def upload_image(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal( FileUploadModal(self.calendar, self.event) )
         await interaction.delete_original_response()
         
-    @discord.ui.button(label="Edit Event", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Edit", style=discord.ButtonStyle.primary)
     async def edit_event(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal( EventModal1(self.calendar, self.event) )
         await interaction.delete_original_response()
