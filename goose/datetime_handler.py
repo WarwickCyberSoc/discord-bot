@@ -1,4 +1,5 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import dateparser
 from dateparser.conf import Settings
@@ -10,12 +11,18 @@ SETTINGS = {
     'DATE_ORDER'               : 'DMY', # Security feature: Americans are barred from using this bot :P
 }
 
-def parse_to_timestamp(text: str) -> float:
+def parse_datetime(text: str) -> datetime:
     dt = dateparser.parse(text, settings=SETTINGS)
     if not dt:
         raise ValueError(f"Could not parse date string: {text!r}")
-    return dt.timestamp()
+    if dt.timestamp() < datetime.now().timestamp():
+        raise ValueError(f"Cannot create event in the past")
+    return dt
 
-def timestamp_to_human(timestamp: float) -> str:
-    dt = datetime.fromtimestamp(timestamp)
+def datetime_format(dt: datetime) -> str:
     return dt.strftime('%d/%m/%Y %H:%M:%S')
+
+def convert_utc_to_london(utc_dt: datetime):
+    if utc_dt.tzinfo is None:
+        utc_dt = utc_dt.replace(tzinfo=ZoneInfo("UTC"))
+    return utc_dt.astimezone(ZoneInfo("Europe/London"))
