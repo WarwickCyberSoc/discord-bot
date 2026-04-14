@@ -7,6 +7,7 @@ from abc import ABC
 from datetime_handler import parse_datetime, datetime_format
 from env_secrets import get_secret
 from calendar_provider import CalendarProvider
+import discord_utils
 from society_event import SocietyEvent
 
 MODAL_TITLE = 'Cybersoc Event Manager'
@@ -99,7 +100,9 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
         if self.event.end:
             self.endDateInput.default = datetime_format(self.event.end)
         if self.event.has_physical_location():
-            self.endDateInput.required = True # Due to Discord API rules
+            # Due to Discord API rules
+            self.endDateInput.required = True
+            self.endDateInput.placeholder = 'Required for grass-touching events'
         self.longTextInput.default = self.event.long_text
         self.shortTextInput.default = self.event.short_text
         self.imageCheckboxInput.component.default = self.event.is_requesting_image
@@ -126,14 +129,14 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
     )
     
     startDateInput = discord.ui.TextInput(
-        label='Start Date/Time',
+        label='Start Date/Time (defaults to UK time)',
         style=discord.TextStyle.short,
         placeholder='Any format, trust me. No AI btw.',
         required=True
     )
     
     endDateInput = discord.ui.TextInput(
-        label='End Date/Time',
+        label='End Date/Time (defaults to UK time)',
         style=discord.TextStyle.short,
         placeholder='If left blank, Google Calendar assumes same day at 11:59PM',
         required=False
@@ -148,17 +151,19 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
             self.event.start = parse_datetime(self.startDateInput.value)
             if self.endDateInput and self.endDateInput.value.strip() != '':
                 self.event.end = parse_datetime(self.endDateInput.value)
+                if self.event.start >= self.event.end:
+                    raise ValueError('Cannot schedule event to end before starting')
         except ValueError as e:
             await self.retry(interaction, str(e))
             return
         
-        embed = self.event.to_embed(interaction)
+        embed = discord_utils.event_embed(self.event, interaction)
         
         if self.imageCheckboxInput.component.value:
             publicity_role_mention = interaction.guild.get_role(int(get_secret('PUBLICITY_ROLE'))).mention
             
             await interaction.response.send_message(
-                content='{} is requesting an image for {} {}'
+                content='{} is requesting an image for `{}` {}'
                         .format(interaction.user.mention, self.event.title, publicity_role_mention),
                 view=FinishCreationView(self.calendar, self.event),
                 embed=embed,
@@ -177,7 +182,7 @@ class FinishCreationView(discord.ui.View):
         
     @discord.ui.button(label="Create Now", style=discord.ButtonStyle.primary)
     async def create_event_now(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.event.publish(interaction, self.calendar)
+        await discord_utils.publish_event(self.event, interaction, self.calendar)
 
     @discord.ui.button(label="Upload Image and Create", style=discord.ButtonStyle.primary)
     async def upload_image(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -207,6 +212,6 @@ class FileUploadModal(EventModalBase, title=MODAL_TITLE):
             if image.content_type not in accepted_types:
                 await self.retry(interaction, 'Image must be in one of the following formats: PNG, JPEG, or WEBP')
                 return
-            self.event.image = image
+            self.event.image = await image.read()
             
-        await self.event.publish(interaction, self.calendar)
+        await discord_utils.publish_event(self.event, interaction, self.calendar)

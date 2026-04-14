@@ -6,10 +6,11 @@ import logging.handlers
 
 import sys
 
-from event_modal import EventModal1
 from env_secrets import get_secret
 from bot_client import BotClient
 from calendar_provider import GoogleCalendar
+from event_modal import EventModal1
+import discord_utils
 
 file_handler = logging.handlers.RotatingFileHandler(
     filename='bot.log',
@@ -31,10 +32,7 @@ logger.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-intents = discord.Intents.default()
-intents.message_content = True
-
-bot = BotClient(intents=intents)
+bot = BotClient()
 calendar = GoogleCalendar(get_secret('CALENDAR_ID'))
 
 @bot.event
@@ -45,14 +43,67 @@ async def on_ready():
 @bot.tree.command()
 async def create_event(interaction: discord.Interaction):
     await interaction.response.send_modal( EventModal1(calendar) )
-    # await interaction.response.send_modal( EventModal1() )
     
-# @bot.tree.command()
-# @app_commands.describe(event_id='The base32hex ID of the event')
-# async def edit_event(interaction: discord.Interaction, event_id: str):
-#     # TODO: edit_event
-#     await interaction.response.send_modal(EventModal(event_id))
+@bot.tree.command()
+@app_commands.describe(event_id='The base32hex ID of the event')
+async def edit_event(interaction: discord.Interaction, event_id: str):
+    props = calendar.get_event(event_id)
+    if not props:
+        await interaction.response.send_message(
+            '`{}` is not an existing event ID :('.format(event_id),
+            ephemeral=True
+        )
+        return
+    
+    # Get most attributes from Scheduled Event
+    scheduled_event = interaction.guild.get_scheduled_event(int(props.scheduled_event_id))
+    if not scheduled_event:
+        await interaction.response.send_message(
+            'Scheduled event not found. It may have been deleted manually?'.format(event_id),
+            ephemeral=True
+        )
+        return
+    
+    event = await discord_utils.scheduled_to_soc_event(scheduled_event)
+    event.id = event_id
+    event.props = props
+    
+    # Get long_text from message
+    channel = interaction.guild.get_channel(1491824909981188126)
+    message = await channel.fetch_message(int(props.message_id))
+    event.long_text = message.content
+    
+    await interaction.response.send_modal( EventModal1(calendar, event) )
 
-# TODO: cancel_event
+@bot.tree.command()
+@app_commands.describe(event_id='The base32hex ID of the event')
+async def cancel_event(interaction: discord.Interaction, event_id: str):
+    props = calendar.get_event(event_id)
+    if not props:
+        await interaction.response.send_message(
+            '`{}` is not an existing event ID :('.format(event_id),
+            ephemeral=True
+        )
+        return
+    
+    # Get most attributes from Scheduled Event
+    scheduled_event = interaction.guild.get_scheduled_event(int(props.scheduled_event_id))
+    if not scheduled_event:
+        await interaction.response.send_message(
+            'Scheduled event not found. It may have been deleted manually?'.format(event_id),
+            ephemeral=True
+        )
+        return
+    
+    event = await discord_utils.scheduled_to_soc_event(scheduled_event)
+    event.id = event_id
+    event.props = props
+    
+    # Get long_text from message
+    channel = interaction.guild.get_channel(1491824909981188126)
+    message = await channel.fetch_message(int(props.message_id))
+    event.long_text = message.content
+    
+    await interaction.response.send_modal( EventModal1(calendar, event) )
 
 bot.run(token=get_secret('BOT_TOKEN'), log_handler=None, log_level=logging.DEBUG)

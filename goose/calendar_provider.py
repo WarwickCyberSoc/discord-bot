@@ -1,7 +1,13 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
+from typing import Optional, Union
 
+import dismoji
 from google.oauth2 import service_account
-from googleapiclient.discovery import build
+from googleapiclient.discovery import HttpError, build
+
+from extended_properties import ExtendedProperties
+from society_event import SocietyEvent
 
 class CalendarProvider(ABC):
     @abstractmethod
@@ -9,7 +15,11 @@ class CalendarProvider(ABC):
         pass
     
     @abstractmethod
-    def create_event(self, details: object) -> str:
+    def do_event(self, event: SocietyEvent, data: ExtendedProperties) -> str:
+        pass
+    
+    @abstractmethod
+    def get_event(self, id: str) -> Optional[ExtendedProperties]:
         pass
 
 class GoogleCalendar(CalendarProvider):
@@ -26,6 +36,45 @@ class GoogleCalendar(CalendarProvider):
         )
         self.service = build("calendar", "v3", credentials=credentials)
             
-    def create_event(self, details: object) -> str:
-        event = self.service.events().insert(calendarId=self.id, body=details).execute()
-        return event.get('id')
+    def do_event(self, event: SocietyEvent, data: ExtendedProperties) -> str:
+        details = {
+            'summary': dismoji.emojize(event.title),
+            'description': dismoji.emojize(event.short_text),
+            'start': self._google_datetime(event.start),
+            'extendedProperties': {
+                'private': data.__dict__
+            }
+        }
+        
+        if not event.has_physical_location():
+            details['location'] = 'Discord Server'
+        else:
+            details['location'] = dismoji.emojize(event.location)
+            
+        if event.end:
+            details['end'] = self._google_datetime(event.end)
+        else:
+            details['end'] = self._google_datetime(event.start.replace(hour=23, minute=59))
+        
+        if event.id:
+            calendar_event = self.service.events().update(calendarId=self.id, eventId=event.id, body=details).execute()
+        else:
+            calendar_event = self.service.events().insert(calendarId=self.id, body=details).execute()
+        return calendar_event['id']
+    
+    @staticmethod
+    def _google_datetime(dt: datetime):
+        return {
+            'dateTime': dt.isoformat(timespec='seconds'),
+            'timeZone': 'Europe/London'
+        }
+    
+    def get_event(self, id: str) -> Optional[ExtendedProperties]:
+        try:
+            event = self.service.events().get(calendarId=self.id, eventId=id).execute()
+            return ExtendedProperties(**event['extendedProperties']['private'])
+        except HttpError as error:
+            if error.resp.status == 404:
+                return None
+            else:
+                raise error

@@ -1,4 +1,5 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import dateparser
 from dateparser.conf import Settings
@@ -20,3 +21,8 @@ def parse_datetime(text: str) -> datetime:
 
 def datetime_format(dt: datetime) -> str:
     return dt.strftime('%d/%m/%Y %H:%M:%S')
+
+def convert_utc_to_london(utc_dt: datetime):
+    if utc_dt.tzinfo is None:
+        utc_dt = utc_dt.replace(tzinfo=ZoneInfo("UTC"))
+    return utc_dt.astimezone(ZoneInfo("Europe/London"))
