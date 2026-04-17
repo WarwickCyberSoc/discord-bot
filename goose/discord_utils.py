@@ -1,4 +1,5 @@
 from io import BytesIO
+from typing import Optional
 
 import discord
 
@@ -8,7 +9,7 @@ from env_secrets import get_secret
 from datetime_handler import convert_utc_to_london
 from society_event import SocietyEvent
 
-def event_embed(event : SocietyEvent, interaction: discord.Interaction) -> discord.Embed:
+def event_embed(event : SocietyEvent, interaction: discord.Interaction) -> tuple[discord.Embed, Optional[discord.File]]:
     time_str = f"<t:{int(event.start.timestamp())}:s>"
     if event.end:
         time_str += f" to <t:{int(event.end.timestamp())}:s>"
@@ -20,9 +21,16 @@ def event_embed(event : SocietyEvent, interaction: discord.Interaction) -> disco
     embed.add_field(name="Location", value=location, inline=True)
     embed.add_field(name="Scheduled Time", value=time_str, inline=True)
     embed.add_field(name="Brief Description", value=event.short_text, inline=False)
-    return embed
+    
+    image = None
+    if event.image:
+        image = discord.File(BytesIO(event.image), 'untitled.jpg')
+        embed.set_image(url=f"attachment://{image.filename}")
+    
+    return (embed, image)
     
 async def publish_event(event: SocietyEvent, interaction: discord.Interaction, calendar: CalendarProvider):
+    await interaction.response.defer(thinking=True)
     scheduled_event = await _do_scheduled_event(event, interaction)
     message = await _do_message(event, interaction)
     calendar_event_id = calendar.do_event(
@@ -34,14 +42,7 @@ async def publish_event(event: SocietyEvent, interaction: discord.Interaction, c
     if event.id:
         message = '`{}` Edited Successfully (id: {})'.format(event.title, calendar_event_id)
     
-    # The below is because forms and views have different ways of responding to interactions
-    try:
-        await interaction.response.send_message(message)
-    except:
-        try:
-            await interaction.message.reply(message)
-        except:
-            pass
+    await interaction.followup.send(message)
     return
     
 async def _do_scheduled_event(event: SocietyEvent, interaction: discord.Interaction) -> discord.ScheduledEvent:
@@ -96,18 +97,21 @@ async def _do_message(event: SocietyEvent, interaction: discord.Interaction) -> 
     )
 
 async def scheduled_to_soc_event(scheduled: discord.ScheduledEvent) -> SocietyEvent:
-        event = SocietyEvent(
-            title = scheduled.name,
-            short_text = scheduled.description,
-            start = convert_utc_to_london(scheduled.start_time),
-            end = convert_utc_to_london(scheduled.end_time)
-        )
+    event = SocietyEvent(
+        title = scheduled.name,
+        short_text = scheduled.description,
+        start = convert_utc_to_london(scheduled.start_time),
+    )
+    
+    if scheduled.end_time:
+        event.end = convert_utc_to_london(scheduled.end_time)
+    
+    if scheduled.entity_type == discord.EntityType.external:
+        event.location = scheduled.location
+    else:
+        event.location = scheduled.channel_id
         
-        if scheduled.entity_type == discord.EntityType.external:
-            event.location = scheduled.location
-        else:
-            event.location = scheduled.channel_id
-            
+    if scheduled.cover_image:
         event.image = await scheduled.cover_image.read()
-        
-        return event
+    
+    return event

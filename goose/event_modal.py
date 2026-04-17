@@ -157,7 +157,8 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
             await self.retry(interaction, str(e))
             return
         
-        embed = discord_utils.event_embed(self.event, interaction)
+        embed, image = discord_utils.event_embed(self.event, interaction)
+        attachments = [image] if image else []
         
         if self.imageCheckboxInput.component.value:
             publicity_role_mention = interaction.guild.get_role(int(get_secret('PUBLICITY_ROLE'))).mention
@@ -167,11 +168,13 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
                         .format(interaction.user.mention, self.event.title, publicity_role_mention),
                 view=FinishCreationView(self.calendar, self.event),
                 embed=embed,
+                files=attachments,
                 ephemeral=False)
         else:
             await interaction.response.send_message(
                 view=FinishCreationView(self.calendar, self.event),
                 embed=embed,
+                files=attachments,
                 ephemeral=True)
         
 class FinishCreationView(discord.ui.View):
