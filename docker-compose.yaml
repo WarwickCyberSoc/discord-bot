@@ -6,4 +6,3 @@ services:
     env_file: prod.env
     volumes:
       - ./google_credentials.json:/app/google_credentials.json:ro
-      - ./bot.log:/app/bot.log
