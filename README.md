@@ -12,6 +12,11 @@ Goose currently offers three commands to manage events in the society server:
 
 They handle events across Discord (both Scheduled Events and Event Announcements) and Google Calendar. Permissions for access to the commands should be set on the Server Settings rather than programatically to provide a better UX.
 
+## TODO
+
+- [ ] Dropped down a list of events to edit
+- [ ] Test message with accept / deny buttons showing preview that would be awesome
+
 ## Running
 
 ### Environment Variables
