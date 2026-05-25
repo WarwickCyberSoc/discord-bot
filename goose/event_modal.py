@@ -131,7 +131,7 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
     startDateInput = discord.ui.TextInput(
         label='Start Date/Time (defaults to UK time)',
         style=discord.TextStyle.short,
-        placeholder='Any format, trust me. No AI btw.',
+        placeholder='E.g. 01/01/1337 but natural language works as well :D',
         required=True
     )
     
@@ -166,40 +166,41 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
             await interaction.response.send_message(
                 content='{} is requesting an image for `{}` {}'
                         .format(interaction.user.mention, self.event.title, publicity_role_mention),
-                view=FinishCreationView(self.calendar, self.event),
+                view=FinishCreationView(self.calendar, self.event, interaction),
                 embed=embed,
                 files=attachments,
                 ephemeral=False)
         else:
             await interaction.response.send_message(
-                view=FinishCreationView(self.calendar, self.event),
+                view=FinishCreationView(self.calendar, self.event, interaction),
                 embed=embed,
                 files=attachments,
                 ephemeral=True)
         
 class FinishCreationView(discord.ui.View):
-    def __init__(self, calendar: CalendarProvider, event: SocietyEvent):
+    def __init__(self, calendar: CalendarProvider, event: SocietyEvent, callerContext: discord.Interaction):
         super().__init__(timeout=None)
         self.event = event
         self.calendar = calendar
+        self.callerContext = callerContext
         
     @discord.ui.button(label="Post Now", style=discord.ButtonStyle.primary)
     async def create_event_now(self, interaction: discord.Interaction, button: discord.ui.Button):
         await discord_utils.publish_event(self.event, interaction, self.calendar)
+        await self.callerContext.delete_original_response()
 
     @discord.ui.button(label="Upload Image and Post", style=discord.ButtonStyle.primary)
     async def upload_image(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal( FileUploadModal(self.calendar, self.event) )
-        await interaction.delete_original_response()
+        await interaction.response.send_modal( FileUploadModal(self.calendar, self.event, interaction) )
         
     @discord.ui.button(label="Edit", style=discord.ButtonStyle.primary)
     async def edit_event(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal( EventModal1(self.calendar, self.event) )
-        await interaction.delete_original_response()
         
 class FileUploadModal(EventModalBase, title=MODAL_TITLE):
-    def __init__(self, calendar: CalendarProvider, event: SocietyEvent):
+    def __init__(self, calendar: CalendarProvider, event: SocietyEvent, callerContext: discord.Interaction):
         super().__init__(calendar, event)
+        self.callerContext = callerContext
         
     promotionImageInput = discord.ui.Label(
         text='Upload Image',
@@ -218,3 +219,4 @@ class FileUploadModal(EventModalBase, title=MODAL_TITLE):
             self.event.image = await image.read()
             
         await discord_utils.publish_event(self.event, interaction, self.calendar)
+        await self.callerContext.delete_original_response()

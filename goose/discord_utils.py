@@ -43,7 +43,6 @@ async def publish_event(event: SocietyEvent, interaction: discord.Interaction, c
         message = '`{}` Edited Successfully (id: {})'.format(event.title, calendar_event_id)
     
     await interaction.followup.send(message)
-    return
     
 async def _do_scheduled_event(event: SocietyEvent, interaction: discord.Interaction) -> discord.ScheduledEvent:
     scheduled_event_builder = {
