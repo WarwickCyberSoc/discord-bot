@@ -10,7 +10,7 @@ from datetime_handler import convert_utc_to_london
 from env_secrets import get_secret
 from society_event import SocietyEvent
 
-def event_embed(event: SocietyEvent, interaction: discord.Interaction) -> tuple[discord.Embed, Optional[discord.File]]:
+def event_embed(event: SocietyEvent, interaction: discord.Interaction, should_ping_publicity: bool) -> tuple[discord.Embed, Optional[discord.File]]:
     time_str = f"<t:{int(event.start.timestamp())}:s>"
     if event.end:
         time_str += f" to <t:{int(event.end.timestamp())}:s>"
@@ -22,6 +22,10 @@ def event_embed(event: SocietyEvent, interaction: discord.Interaction) -> tuple[
     embed.add_field(name="Location", value=location, inline=True)
     embed.add_field(name="Scheduled Time", value=time_str, inline=True)
     embed.add_field(name="Brief Description", value=event.short_text, inline=False)
+    
+    if should_ping_publicity:
+        publicity_role_mention = interaction.guild.get_role(int(get_secret('PUBLICITY_ROLE'))).mention
+        embed.description = '{} is requesting an image for `{}` {}'.format(interaction.user.mention, event.title, publicity_role_mention)
     
     image = None
     if event.image:

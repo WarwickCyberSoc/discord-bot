@@ -5,7 +5,6 @@ from typing import Optional, Type
 from abc import ABC
 
 from datetime_handler import parse_datetime, datetime_format
-from env_secrets import get_secret
 from calendar_provider import CalendarProvider
 import discord_utils
 from society_event import SocietyEvent
@@ -157,25 +156,15 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
             await self.retry(interaction, str(e))
             return
         
-        embed, image = discord_utils.event_embed(self.event, interaction)
+        embed, image = discord_utils.event_embed(self.event, interaction, self.imageCheckboxInput.component.value)
         attachments = [image] if image else []
         
-        if self.imageCheckboxInput.component.value:
-            publicity_role_mention = interaction.guild.get_role(int(get_secret('PUBLICITY_ROLE'))).mention
-            
-            await interaction.response.send_message(
-                content='{} is requesting an image for `{}` {}'
-                        .format(interaction.user.mention, self.event.title, publicity_role_mention),
-                view=FinishCreationView(self.calendar, self.event, interaction),
-                embed=embed,
-                files=attachments,
-                ephemeral=False)
-        else:
-            await interaction.response.send_message(
-                view=FinishCreationView(self.calendar, self.event, interaction),
-                embed=embed,
-                files=attachments,
-                ephemeral=True)
+        await interaction.response.send_message(
+            content=self.event.long_text,
+            view=FinishCreationView(self.calendar, self.event, interaction),
+            embed=embed,
+            files=attachments,
+            ephemeral=not self.imageCheckboxInput.component.value)
         
 class FinishCreationView(discord.ui.View):
     def __init__(self, calendar: CalendarProvider, event: SocietyEvent, callerContext: discord.Interaction):
@@ -195,8 +184,8 @@ class FinishCreationView(discord.ui.View):
         
     @discord.ui.button(label="Edit", style=discord.ButtonStyle.primary)
     async def edit_event(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal( EventModal1(self.calendar, self.event) )
-        
+        await interaction.response.send_modal( EventModal1(self.calendar, self.event) )        
+
 class FileUploadModal(EventModalBase, title=MODAL_TITLE):
     def __init__(self, calendar: CalendarProvider, event: SocietyEvent, callerContext: discord.Interaction):
         super().__init__(calendar, event)

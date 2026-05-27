@@ -15,7 +15,8 @@ They handle events across Discord (both Scheduled Events and Event Announcements
 ## TODO
 
 - [X] Dropped down a list of events to edit
-- [ ] Test message with accept / deny buttons showing preview
+- [X] Test message with accept / deny buttons showing preview
+- [ ] Dropdown list of events to cancel
 
 ## Running
 
