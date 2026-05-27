@@ -81,11 +81,11 @@ class EventModal1(EventModalBase, title=MODAL_TITLE):
         )
         
 class ContinueView(discord.ui.View):
-    def __init__(self, event: SocietyEvent, nextModal: Type[EventModalBase], calendar: CalendarProvider):
+    def __init__(self, event: Optional[SocietyEvent], nextModal: Type[EventModalBase], calendar: CalendarProvider):
         super().__init__(timeout=None)
+        self.calendar = calendar
         self.event = event
         self.nextModal = nextModal
-        self.calendar = calendar
 
     @discord.ui.button(label="Continue", style=discord.ButtonStyle.primary)
     async def next_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -138,7 +138,7 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
     endDateInput = discord.ui.TextInput(
         label='End Date/Time (defaults to UK time)',
         style=discord.TextStyle.short,
-        placeholder='If left blank, Google Calendar assumes same day at 11:59PM',
+        placeholder='If left blank, same day at 11:59PM',
         required=False
     )
     
@@ -220,3 +220,31 @@ class FileUploadModal(EventModalBase, title=MODAL_TITLE):
             
         await discord_utils.publish_event(self.event, interaction, self.calendar)
         await self.callerContext.delete_original_response()
+        
+class SelectEditModal(EventModalBase, title=MODAL_TITLE):
+    def __init__(self, calendar: CalendarProvider, events: dict[str, str]):
+        super().__init__(calendar, None)
+        
+        # len(events) >= 2
+        for id, name in events.items():
+            self.selectEventInput.component.add_option(
+                label=name,
+                value=id
+            )
+    
+    selectEventInput = discord.ui.Label(
+        text='Select the event to edit',
+        component=discord.ui.RadioGroup(
+            required=True
+        )
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        event_id = self.selectEventInput.component.value
+        event = await discord_utils.get_event_from_id(interaction, event_id, self.calendar)
+        
+        await interaction.response.send_message(
+            "Event `{}` selected. Click below to continue.".format(event.title),
+            view=ContinueView(event, EventModal1, self.calendar),
+            ephemeral=True
+        )
