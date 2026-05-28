@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import Optional, Union
+from datetime import datetime, timezone
+from typing import Optional
 
 import dismoji
 from google.oauth2 import service_account
@@ -20,6 +20,10 @@ class CalendarProvider(ABC):
     
     @abstractmethod
     def get_event(self, id: str) -> Optional[ExtendedProperties]:
+        pass
+    
+    @abstractmethod
+    def get_events(self, n: int) -> dict[str, str]:
         pass
     
     @abstractmethod
@@ -80,6 +84,27 @@ class GoogleCalendar(CalendarProvider):
         except HttpError as error:
             if error.resp.status in [404, 410]:
                 return None
+            else:
+                raise error
+            
+    def get_events(self, n: int) -> dict[str, str]:
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        try:
+            events = self.service.events().list(
+                calendarId=self.id,
+                maxResults=n,
+                orderBy='startTime',
+                singleEvents=True,
+                timeMin=now
+            ).execute().get('items', [])
+            
+            # Only events created by us
+            events = filter(lambda x: 'extendedProperties' in x, events)
+
+            return { e['id']: e['summary'] for e in events }
+        except HttpError as error:
+            if error.resp.status in [404, 410]:
+                return {}
             else:
                 raise error
             

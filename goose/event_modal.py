@@ -5,7 +5,6 @@ from typing import Optional, Type
 from abc import ABC
 
 from datetime_handler import parse_datetime, datetime_format
-from env_secrets import get_secret
 from calendar_provider import CalendarProvider
 import discord_utils
 from society_event import SocietyEvent
@@ -81,11 +80,11 @@ class EventModal1(EventModalBase, title=MODAL_TITLE):
         )
         
 class ContinueView(discord.ui.View):
-    def __init__(self, event: SocietyEvent, nextModal: Type[EventModalBase], calendar: CalendarProvider):
+    def __init__(self, event: Optional[SocietyEvent], nextModal: Type[EventModalBase], calendar: CalendarProvider):
         super().__init__(timeout=None)
+        self.calendar = calendar
         self.event = event
         self.nextModal = nextModal
-        self.calendar = calendar
 
     @discord.ui.button(label="Continue", style=discord.ButtonStyle.primary)
     async def next_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -138,7 +137,7 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
     endDateInput = discord.ui.TextInput(
         label='End Date/Time (defaults to UK time)',
         style=discord.TextStyle.short,
-        placeholder='If left blank, Google Calendar assumes same day at 11:59PM',
+        placeholder='If left blank, same day at 11:59PM',
         required=False
     )
     
@@ -157,25 +156,15 @@ class EventModal2(EventModalBase, title=MODAL_TITLE):
             await self.retry(interaction, str(e))
             return
         
-        embed, image = discord_utils.event_embed(self.event, interaction)
+        embed, image = discord_utils.event_embed(self.event, interaction, self.imageCheckboxInput.component.value)
         attachments = [image] if image else []
         
-        if self.imageCheckboxInput.component.value:
-            publicity_role_mention = interaction.guild.get_role(int(get_secret('PUBLICITY_ROLE'))).mention
-            
-            await interaction.response.send_message(
-                content='{} is requesting an image for `{}` {}'
-                        .format(interaction.user.mention, self.event.title, publicity_role_mention),
-                view=FinishCreationView(self.calendar, self.event, interaction),
-                embed=embed,
-                files=attachments,
-                ephemeral=False)
-        else:
-            await interaction.response.send_message(
-                view=FinishCreationView(self.calendar, self.event, interaction),
-                embed=embed,
-                files=attachments,
-                ephemeral=True)
+        await interaction.response.send_message(
+            content=self.event.long_text,
+            view=FinishCreationView(self.calendar, self.event, interaction),
+            embed=embed,
+            files=attachments,
+            ephemeral=not self.imageCheckboxInput.component.value)
         
 class FinishCreationView(discord.ui.View):
     def __init__(self, calendar: CalendarProvider, event: SocietyEvent, callerContext: discord.Interaction):
@@ -195,8 +184,8 @@ class FinishCreationView(discord.ui.View):
         
     @discord.ui.button(label="Edit", style=discord.ButtonStyle.primary)
     async def edit_event(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal( EventModal1(self.calendar, self.event) )
-        
+        await interaction.response.send_modal( EventModal1(self.calendar, self.event) )        
+
 class FileUploadModal(EventModalBase, title=MODAL_TITLE):
     def __init__(self, calendar: CalendarProvider, event: SocietyEvent, callerContext: discord.Interaction):
         super().__init__(calendar, event)
@@ -220,3 +209,41 @@ class FileUploadModal(EventModalBase, title=MODAL_TITLE):
             
         await discord_utils.publish_event(self.event, interaction, self.calendar)
         await self.callerContext.delete_original_response()
+        
+class SelectEventModal(EventModalBase, title=MODAL_TITLE):
+    def __init__(self, calendar: CalendarProvider, events: dict[str, str], to_delete: bool):
+        super().__init__(calendar, None)
+        self.to_delete = to_delete
+        
+        if to_delete:
+            self.selectEventInput.text += 'delete'
+        else:
+            self.selectEventInput.text += 'edit'
+        
+        # len(events) >= 2
+        for id, name in events.items():
+            self.selectEventInput.component.add_option(
+                label=name,
+                value=id
+            )
+    
+    selectEventInput = discord.ui.Label(
+        text='Select the event to ',
+        component=discord.ui.RadioGroup(
+            required=True
+        )
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        event_id = self.selectEventInput.component.value
+        
+        if self.to_delete:
+            await discord_utils.cancel_event(interaction, event_id, self.calendar)
+            return
+            
+        event = await discord_utils.get_event_from_id(interaction, event_id, self.calendar)
+        await interaction.response.send_message(
+            "Event `{}` selected. Click below to continue.".format(event.title),
+            view=ContinueView(event, EventModal1, self.calendar),
+            ephemeral=True
+        )

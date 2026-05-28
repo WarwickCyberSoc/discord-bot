@@ -9,7 +9,7 @@ import sys
 from env_secrets import get_secret
 from bot_client import BotClient
 from calendar_provider import GoogleCalendar
-from event_modal import EventModal1
+from event_modal import EventModal1, SelectEventModal
 import discord_utils
 
 file_handler = logging.handlers.RotatingFileHandler(
@@ -44,58 +44,48 @@ async def on_ready():
 async def create_event(interaction: discord.Interaction):
     await interaction.response.send_modal( EventModal1(calendar) )
     
-@bot.tree.command()
-@app_commands.describe(event_id='The base32hex ID of the event')
 async def edit_event(interaction: discord.Interaction, event_id: str):
-    props = calendar.get_event(event_id)
-    if not props:
-        await interaction.response.send_message('`{}` is not an existing event ID'.format(event_id))
-        return
-    
-    # Get most attributes from Scheduled Event
-    scheduled_event = interaction.guild.get_scheduled_event(int(props.scheduled_event_id))
-    if not scheduled_event:
-        await interaction.response.send_message('Scheduled event not found. It may have been deleted manually?'.format(event_id))
-        return
-    
-    event = await discord_utils.scheduled_to_soc_event(scheduled_event)
-    event.id = event_id
-    event.props = props
-    
-    # Get long_text from message
-    channel = interaction.guild.get_channel(1491824909981188126)
-    message = await channel.fetch_message(int(props.message_id))
-    event.long_text = message.content
-    
+    event = await discord_utils.get_event_from_id(interaction, event_id, calendar)    
     await interaction.response.send_modal( EventModal1(calendar, event) )
-
-@bot.tree.command()
+    
+@bot.tree.command(name='edit_event')
 @app_commands.describe(event_id='The base32hex ID of the event')
-async def cancel_event(interaction: discord.Interaction, event_id: str):
-    await interaction.response.defer(ephemeral=True)
+async def edit_event_cli(interaction: discord.Interaction, event_id: str):
+    await edit_event(interaction, event_id)
     
-    props = calendar.delete_event(event_id)
-    if not props:
-        await interaction.followup.send('`{}` is not an existing event ID'.format(event_id))
-        return
-        
-    channel = interaction.guild.get_channel(1491824909981188126)
-    message = await channel.fetch_message(int(props.message_id))
-    try:
-        await message.delete()
-    except discord.NotFound:
-        pass
+@bot.tree.command(description='Edit one of the 10 latest events from a GUI')
+@app_commands.describe()
+async def edit_event_gui(interaction: discord.Interaction):
+    upcoming_events = calendar.get_events(10) # 10 is the Max for RadioGroup
     
-    scheduled_event = interaction.guild.get_scheduled_event(int(props.scheduled_event_id))
-    if not scheduled_event:
-        await interaction.followup.send(
-            'The scheduled event for `{}` appears to have been manually deleted, the rest is done'.format(event_id)
-        )
+    if len(upcoming_events) == 0:
+        await interaction.response.send_message('There are no upcoming events.', ephemeral=True)
         return
-        
-    title = scheduled_event.name
-    await scheduled_event.cancel()
-    await interaction.channel.send('`{}` Deleted Successfully (id: {})'.format(title, event_id))
-    await interaction.followup.send('Done!')
+    
+    if len(upcoming_events) == 1:
+        await edit_event(interaction, upcoming_events.popitem()[0])
+        return
+    
+    await interaction.response.send_modal( SelectEventModal(calendar, upcoming_events, to_delete=False) )
+
+@bot.tree.command(name='cancel_event')
+@app_commands.describe(event_id='The base32hex ID of the event')
+async def cancel_event_cli(interaction: discord.Interaction, event_id: str):
+    await discord_utils.cancel_event(interaction, event_id, calendar)
+
+@bot.tree.command(description='Cancel one of the 10 latest events from a GUI')
+@app_commands.describe()
+async def cancel_event_gui(interaction: discord.Interaction):
+    upcoming_events = calendar.get_events(10) # 10 is the Max for RadioGroup
+    
+    if len(upcoming_events) == 0:
+        await interaction.response.send_message('There are no upcoming events.', ephemeral=True)
+        return
+    
+    if len(upcoming_events) == 1:
+        await discord_utils.cancel_event(interaction, upcoming_events.popitem()[0], calendar)
+        return
+    
+    await interaction.response.send_modal( SelectEventModal(calendar, upcoming_events, to_delete=True) )
 
 bot.run(token=get_secret('BOT_TOKEN'), log_handler=None, log_level=logging.DEBUG)

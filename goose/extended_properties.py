@@ -1,5 +1,3 @@
-from typing import Union
-
 class ExtendedProperties():
     # Every calendar provider seems to force strings for extended properties
     scheduled_event_id : str
