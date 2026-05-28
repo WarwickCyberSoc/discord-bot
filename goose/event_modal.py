@@ -210,9 +210,15 @@ class FileUploadModal(EventModalBase, title=MODAL_TITLE):
         await discord_utils.publish_event(self.event, interaction, self.calendar)
         await self.callerContext.delete_original_response()
         
-class SelectEditModal(EventModalBase, title=MODAL_TITLE):
-    def __init__(self, calendar: CalendarProvider, events: dict[str, str]):
+class SelectEventModal(EventModalBase, title=MODAL_TITLE):
+    def __init__(self, calendar: CalendarProvider, events: dict[str, str], to_delete: bool):
         super().__init__(calendar, None)
+        self.to_delete = to_delete
+        
+        if to_delete:
+            self.selectEventInput.text += 'delete'
+        else:
+            self.selectEventInput.text += 'edit'
         
         # len(events) >= 2
         for id, name in events.items():
@@ -222,7 +228,7 @@ class SelectEditModal(EventModalBase, title=MODAL_TITLE):
             )
     
     selectEventInput = discord.ui.Label(
-        text='Select the event to edit',
+        text='Select the event to ',
         component=discord.ui.RadioGroup(
             required=True
         )
@@ -230,8 +236,12 @@ class SelectEditModal(EventModalBase, title=MODAL_TITLE):
 
     async def on_submit(self, interaction: discord.Interaction):
         event_id = self.selectEventInput.component.value
-        event = await discord_utils.get_event_from_id(interaction, event_id, self.calendar)
         
+        if self.to_delete:
+            await discord_utils.cancel_event(interaction, event_id, self.calendar)
+            return
+            
+        event = await discord_utils.get_event_from_id(interaction, event_id, self.calendar)
         await interaction.response.send_message(
             "Event `{}` selected. Click below to continue.".format(event.title),
             view=ContinueView(event, EventModal1, self.calendar),

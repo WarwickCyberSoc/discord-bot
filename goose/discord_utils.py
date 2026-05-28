@@ -126,13 +126,13 @@ async def get_event_from_id(interaction: discord.Interaction, event_id: str, cal
     props = calendar.get_event(event_id)
     if not props:
         await interaction.response.send_message('`{}` is not an existing event ID'.format(event_id))
-        return
+        return None
     
     # Get most attributes from Scheduled Event
     scheduled_event = interaction.guild.get_scheduled_event(int(props.scheduled_event_id))
     if not scheduled_event:
         await interaction.response.send_message('Scheduled event not found. It may have been deleted manually?'.format(event_id))
-        return
+        return None
     
     # Get some attributes from calendar
     event = await scheduled_to_soc_event(scheduled_event)
@@ -145,3 +145,31 @@ async def get_event_from_id(interaction: discord.Interaction, event_id: str, cal
     event.long_text = message.content
     
     return event
+
+async def cancel_event(interaction: discord.Interaction, event_id: str, calendar: CalendarProvider):
+    await interaction.response.defer(ephemeral=True)
+    
+    props = calendar.delete_event(event_id)
+    if not props:
+        await interaction.followup.send('`{}` is not an existing event ID'.format(event_id))
+        return
+        
+    channel = interaction.guild.get_channel(1491824909981188126)
+    message = await channel.fetch_message(int(props.message_id))
+    try:
+        await message.delete()
+    except discord.NotFound:
+        await interaction.followup.send(
+            'The announcement message for `{}` appears to have been manually deleted'.format(event_id)
+        )
+    
+    scheduled_event = interaction.guild.get_scheduled_event(int(props.scheduled_event_id))
+    if not scheduled_event:
+        await interaction.followup.send(
+            'The scheduled event for `{}` appears to have been manually deleted'.format(event_id)
+        )
+        
+    title = scheduled_event.name
+    await scheduled_event.cancel()
+    await interaction.channel.send('`{}` Deleted Successfully (id: {})'.format(title, event_id))
+    await interaction.delete_original_response()
