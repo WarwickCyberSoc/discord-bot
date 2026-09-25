@@ -7,7 +7,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import HttpError, build
 
 from extended_properties import ExtendedProperties
-from society_event import SocietyEvent
+from society_event import EventType, SocietyEvent
 
 class CalendarProvider(ABC):
     @abstractmethod
@@ -15,15 +15,15 @@ class CalendarProvider(ABC):
         pass
     
     @abstractmethod
-    def do_event(self, event: SocietyEvent, data: ExtendedProperties) -> str:
+    def create_event(self, event: SocietyEvent, data: ExtendedProperties) -> str:
         pass
     
     @abstractmethod
-    def get_event(self, id: str) -> Optional[ExtendedProperties]:
+    def get_event_properties(self, id: str) -> Optional[ExtendedProperties]:
         pass
     
     @abstractmethod
-    def get_events(self, n: int) -> dict[str, str]:
+    def get_upcoming_events(self, n: int) -> dict[str, str]:
         pass
     
     @abstractmethod
@@ -44,7 +44,7 @@ class GoogleCalendar(CalendarProvider):
         )
         self.service = build("calendar", "v3", credentials=credentials)
             
-    def do_event(self, event: SocietyEvent, data: ExtendedProperties) -> str:
+    def create_event(self, event: SocietyEvent, data: ExtendedProperties) -> str:
         details = {
             'summary': dismoji.emojize(event.title),
             'description': dismoji.emojize(event.short_text),
@@ -77,7 +77,7 @@ class GoogleCalendar(CalendarProvider):
             'timeZone': 'Europe/London'
         }
     
-    def get_event(self, id: str) -> Optional[ExtendedProperties]:
+    def get_event_properties(self, id: str) -> Optional[ExtendedProperties]:
         try:
             event = self.service.events().get(calendarId=self.id, eventId=id).execute()
             return ExtendedProperties(**event['extendedProperties']['private'])
@@ -87,7 +87,7 @@ class GoogleCalendar(CalendarProvider):
             else:
                 raise error
             
-    def get_events(self, n: int) -> dict[str, str]:
+    def get_upcoming_events(self, n: int) -> dict[str, str]:
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         try:
             events = self.service.events().list(
@@ -109,7 +109,7 @@ class GoogleCalendar(CalendarProvider):
                 raise error
             
     def delete_event(self, id: str) -> Optional[ExtendedProperties]:
-        props = self.get_event(id)
+        props = self.get_event_properties(id)
         if not props:
             return None
         
@@ -120,3 +120,45 @@ class GoogleCalendar(CalendarProvider):
             if error.resp.status in [404, 410]:
                 return None 
             raise error
+
+
+class GoogleCalendarHandler(CalendarProvider):
+    CALENDAR_IDS = {
+        EventType.ACADEMIC : 'd6cbb1bdfa033d8c017b90517e977a65c37f7ae9d480778cdceea14db7ab596d@group.calendar.google.com',
+        EventType.DRINKING : 'c7425a49eeb18eed9441c4484e8c3d20af91594af3e024a43dd9d5d33101d08e@group.calendar.google.com',
+        EventType.SOBER    : 'fd7a382189416be1f514c1fd77edbb7e09ec05625de041fe4f245593fc9b6d20@group.calendar.google.com'
+    }
+
+    def __init__(self) -> None:
+        self.calendars = {
+            event_type: GoogleCalendar(calendar_id)
+            for event_type, calendar_id in self.CALENDAR_IDS.items()
+        }
+
+    def authenticate(self):
+        for calendar in self.calendars.values():
+            calendar.authenticate()
+
+    def create_event(self, event: SocietyEvent, data: ExtendedProperties) -> str:
+        data.event_type = event.event_type
+        return self.calendars[event.event_type].create_event(event, data)
+
+    def get_event_properties(self, id: str) -> Optional[ExtendedProperties]:
+        for calendar in self.calendars.values():
+            event = calendar.get_event_properties(id)
+            if event:
+                return event
+        return None
+
+    def get_upcoming_events(self, n: int) -> dict[str, str]:
+        events = {}
+        for calendar in self.calendars.values():
+            events.update(calendar.get_upcoming_events(n))
+        return dict(list(events.items())[:n])
+
+    def delete_event(self, id: str) -> Optional[ExtendedProperties]:
+        for calendar in self.calendars.values():
+            event = calendar.delete_event(id)
+            if event:
+                return event
+        return None

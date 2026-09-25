@@ -8,7 +8,7 @@ import sys
 
 from env_secrets import get_secret
 from bot_client import BotClient
-from calendar_provider import GoogleCalendar
+from calendar_provider import GoogleCalendarHandler
 from event_modal import EventModal1, SelectEventModal
 import discord_utils
 
@@ -33,7 +33,7 @@ logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
 bot = BotClient()
-calendar = GoogleCalendar(get_secret('CALENDAR_ID'))
+calendar = GoogleCalendarHandler()
 
 @bot.event
 async def on_ready():
@@ -56,7 +56,7 @@ async def edit_event_cli(interaction: discord.Interaction, event_id: str):
 @bot.tree.command(description='Edit one of the 10 latest events from a GUI')
 @app_commands.describe()
 async def edit_event_gui(interaction: discord.Interaction):
-    upcoming_events = calendar.get_events(10) # 10 is the Max for RadioGroup
+    upcoming_events = calendar.get_upcoming_events(10) # 10 is the Max for RadioGroup
     
     if len(upcoming_events) == 0:
         await interaction.response.send_message('There are no upcoming events.', ephemeral=True)
@@ -76,7 +76,7 @@ async def cancel_event_cli(interaction: discord.Interaction, event_id: str):
 @bot.tree.command(description='Cancel one of the 10 latest events from a GUI')
 @app_commands.describe()
 async def cancel_event_gui(interaction: discord.Interaction):
-    upcoming_events = calendar.get_events(10) # 10 is the Max for RadioGroup
+    upcoming_events = calendar.get_upcoming_events(10) # 10 is the Max for RadioGroup
     
     if len(upcoming_events) == 0:
         await interaction.response.send_message('There are no upcoming events.', ephemeral=True)

@@ -26,7 +26,6 @@ For development, `./goose/.env` is used. Please contact me (@VulcanShot) if you 
 
 - `GUILD` (development only): Server ID, used to facilitate development without having to wait for Discord to acknowledge changes in the bot
 - `EVENTS_CHANNEL`: Channel ID where the bot should send event announcements
-- `CALENDAR_ID`: Calendar ID, using Google Calendar at the moment
 - `PUBLICITY_ROLE`: Role ID for the Publicity (formerly known as Marketing) Officer Role, used to ping them to request images for events
 - `BOT_TOKEN`: Discord Bot Token (found on Discord Developer Portal and Vaultwarden)
 
