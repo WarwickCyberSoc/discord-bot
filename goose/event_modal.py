@@ -7,7 +7,7 @@ from abc import ABC
 from datetime_handler import parse_datetime, datetime_format
 from calendar_provider import CalendarProvider
 import discord_utils
-from society_event import SocietyEvent
+from society_event import EventType, SocietyEvent
 
 MODAL_TITLE = 'Cybersoc Event Manager'
 
@@ -35,6 +35,12 @@ class EventModal1(EventModalBase, title=MODAL_TITLE):
             self.placeChannelInput.component.default_values = [ discord.Object(self.event.location) ]
         else:
             self.placeTextInput.default = self.event.location
+        for evtType in EventType:
+            self.eventTypeInput.component.add_option(
+                label=evtType.value.capitalize(),
+                value=evtType.value,
+                default=(evtType == self.event.event_type)
+            )
     
     titleInput = discord.ui.TextInput(
         label='Name',
@@ -42,6 +48,11 @@ class EventModal1(EventModalBase, title=MODAL_TITLE):
         placeholder='Pub crawl but we all pay for the Technician\'s pints',
         required=True,
         max_length=100
+    )
+    
+    eventTypeInput = discord.ui.Label(
+        text='Event Type',
+        component= discord.ui.Select(required=True)
     )
     
     placeChannelInput = discord.ui.Label(
@@ -65,6 +76,7 @@ class EventModal1(EventModalBase, title=MODAL_TITLE):
 
     async def on_submit(self, interaction: discord.Interaction):
         self.event.title = self.titleInput.value
+        self.event.event_type = self.eventTypeInput.component.values[0]
         if len(self.placeChannelInput.component.values) > 0:
             self.event.location = self.placeChannelInput.component.values[0].id
         elif self.placeTextInput.value.strip() != '':
@@ -229,9 +241,7 @@ class SelectEventModal(EventModalBase, title=MODAL_TITLE):
     
     selectEventInput = discord.ui.Label(
         text='Select the event to ',
-        component=discord.ui.RadioGroup(
-            required=True
-        )
+        component=discord.ui.RadioGroup(required=True)
     )
 
     async def on_submit(self, interaction: discord.Interaction):

@@ -2,7 +2,7 @@ services:
   goose-bot:
     image: ghcr.io/warwickcybersoc/discord-bot:latest
     container_name: goose_bot
-    restart: always
+    restart: unless-stopped
     env_file: prod.env
     volumes:
       - ./google_credentials.json:/app/google_credentials.json:ro
